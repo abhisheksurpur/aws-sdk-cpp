@@ -780,11 +780,13 @@ void AWSClient::AppendHeaderValueToRequest(const std::shared_ptr<Aws::Http::Http
 void AWSClient::AddChecksumToRequest(const std::shared_ptr<Aws::Http::HttpRequest>& httpRequest,
     const Aws::AmazonWebServiceRequest& request) const
 {
-    Aws::String checksumAlgorithmName = Aws::Utils::StringUtils::ToLower(request.GetChecksumAlgorithmName().c_str());
+    auto checksum = request.GetChecksum();
+
     if (request.GetServiceSpecificParameters()) {
         auto requestChecksumOverride = request.GetServiceSpecificParameters()->parameterMap.find("overrideChecksum");
         if (requestChecksumOverride != request.GetServiceSpecificParameters()->parameterMap.end()) {
-            checksumAlgorithmName = requestChecksumOverride->second;
+            Checksum overidden{ChecksumAlgorithmFromString(requestChecksumOverride->second), checksum.GetChecksum()};
+            checksum = std::move(overidden);
         }
     }
 
@@ -793,10 +795,11 @@ void AWSClient::AddChecksumToRequest(const std::shared_ptr<Aws::Http::HttpReques
                               request.GetServiceSpecificParameters()->parameterMap.end();
 
     //Check if user has provided the checksum algorithm
-    if (!checksumAlgorithmName.empty() && !shouldSkipChecksum)
+    if (checksum.GetChecksumAlgorithm() != AwsChecksumAlgorithm::NOT_SET && !shouldSkipChecksum)
     {
         // Check if user has provided a checksum value for the specified algorithm
-        const Aws::String checksumType = "x-amz-checksum-" + checksumAlgorithmName;
+        const auto requestChecksumAlgorithm = ChecksumAlgorithmToString(checksum.GetChecksumAlgorithm());
+        const Aws::String checksumType = "x-amz-checksum-" + requestChecksumAlgorithm;
         const HeaderValueCollection &headers = request.GetHeaders();
         const auto checksumHeader = headers.find(checksumType);
         bool checksumValueAndAlgorithmProvided = checksumHeader != headers.end();
@@ -806,62 +809,45 @@ void AWSClient::AddChecksumToRequest(const std::shared_ptr<Aws::Http::HttpReques
         if (request.IsStreaming() && checksumValueAndAlgorithmProvided)
         {
             const auto hash = Aws::MakeShared<Crypto::PrecalculatedHash>(AWS_CLIENT_LOG_TAG, checksumHeader->second);
-            httpRequest->SetRequestHash(checksumAlgorithmName,hash);
+            httpRequest->SetRequestHash(requestChecksumAlgorithm,hash);
         }
         else if (checksumValueAndAlgorithmProvided){
             httpRequest->SetHeaderValue(checksumType, checksumHeader->second);
         }
-        else if (checksumAlgorithmName == "crc32")
-        {
-            if (request.IsStreaming())
-            {
-                httpRequest->SetRequestHash(checksumAlgorithmName, Aws::MakeShared<Crypto::CRC32>(AWS_CLIENT_LOG_TAG));
-            }
-            else
-            {
-                httpRequest->SetHeaderValue(checksumType, HashingUtils::Base64Encode(HashingUtils::CalculateCRC32(*(GetBodyStream(request)))));
-            }
-        }
-        else if (checksumAlgorithmName == "crc32c")
-        {
-            if (request.IsStreaming())
-            {
-                httpRequest->SetRequestHash(checksumAlgorithmName, Aws::MakeShared<Crypto::CRC32C>(AWS_CLIENT_LOG_TAG));
-            }
-            else
-            {
-                httpRequest->SetHeaderValue(checksumType, HashingUtils::Base64Encode(HashingUtils::CalculateCRC32C(*(GetBodyStream(request)))));
-            }
-        }
-        else if (checksumAlgorithmName == "sha256")
-        {
-            if (request.IsStreaming())
-            {
-                httpRequest->SetRequestHash(checksumAlgorithmName, Aws::MakeShared<Crypto::Sha256>(AWS_CLIENT_LOG_TAG));
-            }
-            else
-            {
-                httpRequest->SetHeaderValue(checksumType, HashingUtils::Base64Encode(HashingUtils::CalculateSHA256(*(GetBodyStream(request)))));
-            }
-        }
-        else if (checksumAlgorithmName == "sha1")
-        {
-            if (request.IsStreaming())
-            {
-                httpRequest->SetRequestHash(checksumAlgorithmName, Aws::MakeShared<Crypto::Sha1>(AWS_CLIENT_LOG_TAG));
-            }
-            else
-            {
-                httpRequest->SetHeaderValue(checksumType, HashingUtils::Base64Encode(HashingUtils::CalculateSHA1(*(GetBodyStream(request)))));
-            }
-        }
-        else if (checksumAlgorithmName == "md5" && headers.find(CONTENT_MD5_HEADER) == headers.end())
-        {
-            httpRequest->SetHeaderValue(Http::CONTENT_MD5_HEADER, HashingUtils::Base64Encode(HashingUtils::CalculateMD5(*(GetBodyStream(request)))));
-        }
         else
         {
-            AWS_LOGSTREAM_WARN(AWS_CLIENT_LOG_TAG, "Checksum algorithm: " << checksumAlgorithmName << "is not supported by SDK.");
+            bool useHeader = false;
+            if (request.IsStreaming())
+            {
+                const auto hash = ChecksumAlgorithmHashProvider(checksum.GetChecksumAlgorithm());
+                if (hash.has_value())
+                {
+                    httpRequest->SetRequestHash(requestChecksumAlgorithm, hash.value()());
+                } else
+                {
+                    useHeader = true;
+                }
+
+            }
+            else
+            {
+                useHeader = true;
+            }
+
+            if (useHeader)
+            {
+                const auto header = ChecksumAlgorithmHeader(checksum.GetChecksumAlgorithm());
+                const auto hashFunc = ChecksumAlgorithmHashFunc(checksum);
+                if (header.has_value() && hashFunc.has_value())
+                {
+                    const auto hashBuf = hashFunc.value()(*GetBodyStream(request));
+                    httpRequest->SetHeaderValue(header.value(), hashBuf);
+                }
+                else
+                {
+                    AWS_LOGSTREAM_ERROR(AWS_CLIENT_LOG_TAG, "Unsupported checksum detected: " << requestChecksumAlgorithm);
+                }
+            }
         }
     }
 
@@ -870,31 +856,30 @@ void AWSClient::AddChecksumToRequest(const std::shared_ptr<Aws::Http::HttpReques
     {
         for (const Aws::String& responseChecksumAlgorithmName : request.GetResponseChecksumAlgorithmNames())
         {
-            checksumAlgorithmName = Aws::Utils::StringUtils::ToLower(responseChecksumAlgorithmName.c_str());
-
-            if (checksumAlgorithmName == "crc32c")
+            const auto responseChecksumAlgorithm = Aws::Utils::StringUtils::ToLower(responseChecksumAlgorithmName.c_str());
+            if (responseChecksumAlgorithm == "crc32c")
             {
                 std::shared_ptr<Aws::Utils::Crypto::CRC32C> crc32c = Aws::MakeShared<Aws::Utils::Crypto::CRC32C>(AWS_CLIENT_LOG_TAG);
                 httpRequest->AddResponseValidationHash("crc32c", crc32c);
             }
-            else if (checksumAlgorithmName == "crc32")
+            else if (responseChecksumAlgorithm == "crc32")
             {
                 std::shared_ptr<Aws::Utils::Crypto::CRC32> crc32 = Aws::MakeShared<Aws::Utils::Crypto::CRC32>(AWS_CLIENT_LOG_TAG);
                 httpRequest->AddResponseValidationHash("crc", crc32);
             }
-            else if (checksumAlgorithmName == "sha1")
+            else if (responseChecksumAlgorithm == "sha1")
             {
                 std::shared_ptr<Aws::Utils::Crypto::Sha1> sha1 = Aws::MakeShared<Aws::Utils::Crypto::Sha1>(AWS_CLIENT_LOG_TAG);
                 httpRequest->AddResponseValidationHash("sha1", sha1);
             }
-            else if (checksumAlgorithmName == "sha256")
+            else if (responseChecksumAlgorithm == "sha256")
             {
                 std::shared_ptr<Aws::Utils::Crypto::Sha256> sha256 = Aws::MakeShared<Aws::Utils::Crypto::Sha256>(AWS_CLIENT_LOG_TAG);
                 httpRequest->AddResponseValidationHash("sha256", sha256);
             }
             else
             {
-                AWS_LOGSTREAM_WARN(AWS_CLIENT_LOG_TAG, "Checksum algorithm: " << checksumAlgorithmName << " is not supported in validating response body yet.");
+                AWS_LOGSTREAM_WARN(AWS_CLIENT_LOG_TAG, "Checksum algorithm: " << responseChecksumAlgorithm << " is not supported in validating response body yet.");
             }
         }
     }
