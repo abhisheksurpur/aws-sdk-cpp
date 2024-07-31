@@ -127,7 +127,7 @@ namespace client
         virtual bool AdjustClockSkew(HttpResponseOutcome& outcome, const AuthSchemeOption& authSchemeOption) const = 0;
 
     protected:
-        Aws::Client::ClientConfiguration& m_clientConfig;
+        Aws::Client::ClientConfiguration m_clientConfig;
         Aws::String m_serviceName;
         Aws::String m_userAgent;
 

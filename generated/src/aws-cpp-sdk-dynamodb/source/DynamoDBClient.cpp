@@ -98,12 +98,14 @@ const char* DynamoDBClient::GetAllocationTag() {return ALLOCATION_TAG;}
 
 DynamoDBClient::DynamoDBClient(const DynamoDB::DynamoDBClientConfiguration& clientConfiguration,
                                std::shared_ptr<DynamoDBEndpointProviderBase> endpointProvider) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             Aws::MakeShared<DefaultAWSCredentialsProviderChain>(ALLOCATION_TAG),
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+  AwsSmithyClientT(clientConfiguration,
+      GetServiceName(),
+      Aws::Http::CreateHttpClient(clientConfiguration),
+      Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+      clientConfiguration,
+      endpointProvider,
+      nullptr,
+      {}),
   m_clientConfiguration(clientConfiguration),
   m_executor(clientConfiguration.executor),
   m_endpointProvider(endpointProvider ? std::move(endpointProvider) : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))

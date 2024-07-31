@@ -7,8 +7,10 @@
 #include <aws/dynamodb/DynamoDB_EXPORTS.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/client/AWSClient.h>
-#include <smithy/client/AwsSmithyClient.h>
 #include <aws/dynamodb/DynamoDBServiceClientModel.h>
+#include <smithy/client/AwsSmithyClient.h>
+#include <smithy/identity/auth/built-in/SigV4AuthSchemeResolver.h>
+#include <smithy/identity/auth/built-in/SigV4AuthScheme.h>
 
 namespace Aws
 {
@@ -36,9 +38,9 @@ namespace DynamoDB
    */
   class AWS_DYNAMODB_API DynamoDBClient : smithy::client::AwsSmithyClientT<SERVICE_NAME,
      DynamoDBClientConfiguration,
-     nullptr_t,
-     nullptr_t,
-     DynamoDBEndpointProvider>
+     smithy::SigV4AuthSchemeResolver<>,
+     smithy::SigV4AuthScheme,
+     DynamoDBEndpointProviderBase>
   {
     public:
       typedef Aws::Client::AWSJsonClient BASECLASS;
