@@ -7,14 +7,15 @@
 #include <aws/dynamodb/DynamoDB_EXPORTS.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/client/AWSClient.h>
-#include <aws/core/client/AWSClientAsyncCRTP.h>
-#include <aws/core/utils/json/JsonSerializer.h>
+#include <smithy/client/AwsSmithyClient.h>
 #include <aws/dynamodb/DynamoDBServiceClientModel.h>
 
 namespace Aws
 {
 namespace DynamoDB
 {
+  static const char SERVICE_NAME[] = "dynamodb";
+  static const char ALLOCATION_TAG[] = "DynamoDBClient";
   /**
    * <fullname>Amazon DynamoDB</fullname> <p>Amazon DynamoDB is a fully managed NoSQL
    * database service that provides fast and predictable performance with seamless
@@ -33,7 +34,11 @@ namespace DynamoDB
    * Zones in an Amazon Web Services Region, providing built-in high availability and
    * data durability.</p>
    */
-  class AWS_DYNAMODB_API DynamoDBClient : public Aws::Client::AWSJsonClient, public Aws::Client::ClientWithAsyncTemplateMethods<DynamoDBClient>
+  class AWS_DYNAMODB_API DynamoDBClient : smithy::client::AwsSmithyClientT<SERVICE_NAME,
+     DynamoDBClientConfiguration,
+     nullptr_t,
+     nullptr_t,
+     DynamoDBEndpointProvider>
   {
     public:
       typedef Aws::Client::AWSJsonClient BASECLASS;
@@ -2251,7 +2256,6 @@ namespace DynamoDB
       void OverrideEndpoint(const Aws::String& endpoint);
       std::shared_ptr<DynamoDBEndpointProviderBase>& accessEndpointProvider();
     private:
-      friend class Aws::Client::ClientWithAsyncTemplateMethods<DynamoDBClient>;
       void init(const DynamoDBClientConfiguration& clientConfiguration);
 
       mutable Aws::Utils::ConcurrentCache<Aws::String, Aws::String> m_endpointsCache;

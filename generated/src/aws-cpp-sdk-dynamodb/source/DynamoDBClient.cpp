@@ -93,14 +93,6 @@ using namespace Aws::Utils::Json;
 using namespace smithy::components::tracing;
 using ResolveEndpointOutcome = Aws::Endpoint::ResolveEndpointOutcome;
 
-namespace Aws
-{
-  namespace DynamoDB
-  {
-    const char SERVICE_NAME[] = "dynamodb";
-    const char ALLOCATION_TAG[] = "DynamoDBClient";
-  }
-}
 const char* DynamoDBClient::GetServiceName() {return SERVICE_NAME;}
 const char* DynamoDBClient::GetAllocationTag() {return ALLOCATION_TAG;}
 
