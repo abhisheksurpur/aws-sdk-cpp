@@ -20,8 +20,8 @@ namespace smithy {
     class AwsSigV4Signer : public AwsSignerBase<AwsCredentialIdentityBase> {
     public:
         using SigV4AuthSchemeParameters = DefaultAuthSchemeResolverParameters;
-        explicit AwsSigV4Signer(const SigV4AuthSchemeParameters& parameters)
-            : legacySigner(nullptr, parameters.serviceName.c_str(), *parameters.region)
+        explicit AwsSigV4Signer(const Aws::String& serviceName, const Aws::String& region)
+            : legacySigner(nullptr, serviceName.c_str(), region)
         {
         }
 
@@ -35,7 +35,7 @@ namespace smithy {
             bool signPayload = signPayloadIt != properties.end() ? signPayloadIt->second == "true" : false;
 
             assert(httpRequest);
-            bool success = legacySigner.SignRequestWithCreds(*httpRequest, legacyCreds, parameters.region->c_str(), parameters.serviceName.c_str(), signPayload);
+            bool success = legacySigner.SignRequestWithCreds(*httpRequest, legacyCreds, region_.c_str(), serviceName_.c_str(), signPayload);
             if (success)
             {
                 return SigningFutureOutcome(std::move(httpRequest));
@@ -45,7 +45,8 @@ namespace smithy {
 
         virtual ~AwsSigV4Signer() {};
     protected:
-        SigV4AuthSchemeParameters parameters;
+        Aws::String serviceName_;
+        Aws::String region_;
         Aws::Client::AWSAuthV4Signer legacySigner;
     };
 }

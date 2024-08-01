@@ -98,17 +98,17 @@ const char* DynamoDBClient::GetAllocationTag() {return ALLOCATION_TAG;}
 
 DynamoDBClient::DynamoDBClient(const DynamoDB::DynamoDBClientConfiguration& clientConfiguration,
                                std::shared_ptr<DynamoDBEndpointProviderBase> endpointProvider) :
-  AwsSmithyClientT(clientConfiguration,
-      GetServiceName(),
-      Aws::Http::CreateHttpClient(clientConfiguration),
-      Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
-      clientConfiguration,
-      endpointProvider,
-      nullptr,
-      {}),
-  m_clientConfiguration(clientConfiguration),
-  m_executor(clientConfiguration.executor),
-  m_endpointProvider(endpointProvider ? std::move(endpointProvider) : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
+    AwsSmithyClientT(clientConfiguration,
+        GetServiceName(),
+        Aws::Http::CreateHttpClient(clientConfiguration),
+        Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+        clientConfiguration,
+        endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+        Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+        {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{GetServiceName(), clientConfiguration.region }}}),
+    m_clientConfiguration(clientConfiguration),
+    m_executor(clientConfiguration.executor),
+    m_endpointProvider(endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
 {
   init(m_clientConfiguration);
 }
@@ -116,15 +116,17 @@ DynamoDBClient::DynamoDBClient(const DynamoDB::DynamoDBClientConfiguration& clie
 DynamoDBClient::DynamoDBClient(const AWSCredentials& credentials,
                                std::shared_ptr<DynamoDBEndpointProviderBase> endpointProvider,
                                const DynamoDB::DynamoDBClientConfiguration& clientConfiguration) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             Aws::MakeShared<SimpleAWSCredentialsProvider>(ALLOCATION_TAG, credentials),
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+    AwsSmithyClientT(clientConfiguration,
+        GetServiceName(),
+        Aws::Http::CreateHttpClient(clientConfiguration),
+        Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+        clientConfiguration,
+        endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+        Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+        {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{credentials, GetServiceName(), clientConfiguration.region }}}),
     m_clientConfiguration(clientConfiguration),
     m_executor(clientConfiguration.executor),
-    m_endpointProvider(endpointProvider ? std::move(endpointProvider) : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
+    m_endpointProvider(endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
 {
   init(m_clientConfiguration);
 }
@@ -132,27 +134,31 @@ DynamoDBClient::DynamoDBClient(const AWSCredentials& credentials,
 DynamoDBClient::DynamoDBClient(const std::shared_ptr<AWSCredentialsProvider>& credentialsProvider,
                                std::shared_ptr<DynamoDBEndpointProviderBase> endpointProvider,
                                const DynamoDB::DynamoDBClientConfiguration& clientConfiguration) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             credentialsProvider,
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+    AwsSmithyClientT(clientConfiguration,
+        GetServiceName(),
+        Aws::Http::CreateHttpClient(clientConfiguration),
+        Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+        clientConfiguration,
+        endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+        Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+        {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{credentialsProvider, GetServiceName(), clientConfiguration.region }}}),
     m_clientConfiguration(clientConfiguration),
     m_executor(clientConfiguration.executor),
-    m_endpointProvider(endpointProvider ? std::move(endpointProvider) : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
+    m_endpointProvider(endpointProvider ? endpointProvider : Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
 {
   init(m_clientConfiguration);
 }
 
     /* Legacy constructors due deprecation */
   DynamoDBClient::DynamoDBClient(const Client::ClientConfiguration& clientConfiguration) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             Aws::MakeShared<DefaultAWSCredentialsProviderChain>(ALLOCATION_TAG),
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+  AwsSmithyClientT(clientConfiguration,
+      GetServiceName(),
+      Aws::Http::CreateHttpClient(clientConfiguration),
+      Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+      clientConfiguration,
+      Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+      Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+      {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{Aws::MakeShared<DefaultAWSCredentialsProviderChain>(ALLOCATION_TAG), GetServiceName(), clientConfiguration.region }}}),
   m_clientConfiguration(clientConfiguration),
   m_executor(clientConfiguration.executor),
   m_endpointProvider(Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
@@ -162,12 +168,14 @@ DynamoDBClient::DynamoDBClient(const std::shared_ptr<AWSCredentialsProvider>& cr
 
 DynamoDBClient::DynamoDBClient(const AWSCredentials& credentials,
                                const Client::ClientConfiguration& clientConfiguration) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             Aws::MakeShared<SimpleAWSCredentialsProvider>(ALLOCATION_TAG, credentials),
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+    AwsSmithyClientT(clientConfiguration,
+        GetServiceName(),
+        Aws::Http::CreateHttpClient(clientConfiguration),
+        Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+        clientConfiguration,
+        Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+        Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+        {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{Aws::MakeShared<SimpleAWSCredentialsProvider>(ALLOCATION_TAG, credentials), GetServiceName(), clientConfiguration.region }}}),
     m_clientConfiguration(clientConfiguration),
     m_executor(clientConfiguration.executor),
     m_endpointProvider(Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
@@ -177,12 +185,14 @@ DynamoDBClient::DynamoDBClient(const AWSCredentials& credentials,
 
 DynamoDBClient::DynamoDBClient(const std::shared_ptr<AWSCredentialsProvider>& credentialsProvider,
                                const Client::ClientConfiguration& clientConfiguration) :
-  BASECLASS(clientConfiguration,
-            Aws::MakeShared<AWSAuthV4Signer>(ALLOCATION_TAG,
-                                             credentialsProvider,
-                                             SERVICE_NAME,
-                                             Aws::Region::ComputeSignerRegion(clientConfiguration.region)),
-            Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG)),
+    AwsSmithyClientT(clientConfiguration,
+        GetServiceName(),
+        Aws::Http::CreateHttpClient(clientConfiguration),
+        Aws::MakeShared<DynamoDBErrorMarshaller>(ALLOCATION_TAG),
+        clientConfiguration,
+        Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG),
+        Aws::MakeShared<smithy::SigV4AuthSchemeResolver<>>(ALLOCATION_TAG),
+        {{ smithy::SigV4AuthSchemeOption::sigV4AuthSchemeOption.schemeId, smithy::SigV4AuthScheme{credentialsProvider, GetServiceName(), clientConfiguration.region }}}),
     m_clientConfiguration(clientConfiguration),
     m_executor(clientConfiguration.executor),
     m_endpointProvider(Aws::MakeShared<DynamoDBEndpointProvider>(ALLOCATION_TAG))
